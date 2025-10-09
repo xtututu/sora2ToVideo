@@ -123,11 +123,48 @@ basekit.addField({
       )
 
       const initialResult = await taskResp.json();
-            console.log('视频创建接口响应:', initialResult);
-            
-     
       
-      const videoUrl = initialResult.video_url;
+      
+      // 添加类型定义
+      interface TaskResponse {
+        task_id?: string;
+        taskId?: string;
+      }
+      
+      interface VideoResult {
+        video_url?: string;
+      }
+      
+      // 获取任务ID，兼容两种可能的字段名
+      const taskId = (initialResult as TaskResponse).task_id || (initialResult as TaskResponse).taskId;
+
+      if(!taskId){
+        debugLog({'===2 响应中缺少task_id': initialResult});
+        return {
+          code: FieldCode.Error,
+        }
+      }
+
+      const apiUrl = `https://open.feishu.cn/anycross/trigger/callback/MDA0MTliNDExYmRmMTQzNGMyNDQwMTVhM2M4ZWNjZjY2?id=${taskId}`;
+      
+      let checkUrl = async (): Promise<string> => {
+        const response = await fetch(apiUrl);
+
+        debugLog({'=2 视频结果查询结果': response});
+        const result = await response.json() as VideoResult;
+        
+        // 正确检查video_url是否存在且不为空
+        if (result.video_url && result.video_url !== "null" && result.video_url !== "") {
+          return result.video_url;
+        } else {
+          console.log('视频尚未生成，15秒后重试...');
+          await new Promise(resolve => setTimeout(resolve, 15000));
+          return checkUrl();
+        }
+      };
+      
+      const videoUrl = await checkUrl();
+      
       let url = [
       {
         type: 'url',
