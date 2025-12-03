@@ -1,7 +1,7 @@
 import { basekit, FieldType, field, FieldComponent, FieldCode, NumberFormatter, AuthorizationType } from '@lark-opdev/block-basekit-server-api';
 const { t } = field;
 
-const feishuDm = ['feishu.cn', 'feishucdn.com', 'larksuitecdn.com', 'larksuite.com','api.chatfire.cn','api.xunkecloud.cn'];
+const feishuDm = ['feishu.cn', 'feishucdn.com', 'larksuitecdn.com', 'larksuite.com','api.chatfire.cn','api.xunkecloud.cn','test.xunkecloud.cn'];
 // 通过addDomainList添加请求接口的域名，不可写多个addDomainList，否则会被覆盖
 basekit.addDomainList([...feishuDm, 'api.exchangerate-api.com',]);
 
@@ -18,7 +18,6 @@ basekit.addField({
       },
       'en-US': {
         'videoMethod': 'Model selection',
-       
         'videoPrompt': 'Video prompt',
         'refImage': 'Reference image',
         'seconds': 'Video duration',
@@ -59,8 +58,7 @@ basekit.addField({
       props: {
         options: [
            { label: 'sora-2', value: 'sora-2'},
-          { label: 'sora-2-hd', value: 'sora2-hd'},
-          { label: 'sora-2-pro', value: 'sora2-pro'},
+          { label: 'sora-2-hd', value: 'sora-2-hd'}
         ]
       },
     },
@@ -96,8 +94,7 @@ basekit.addField({
           
         ]
       },
-    }
-    ,
+    },
     {
       key: 'size',
       label: t('size'),
@@ -133,238 +130,128 @@ basekit.addField({
     }
 
     
+    // 常量定义
+    const API_BASE_URL = 'http://test.xunkecloud.cn/v1/videos';
+    const POLLING_INTERVAL = 5000; // 5秒间隔
+    const MAX_POLLING_TIME = 900000; // 900秒最大等待时间
+
+    // 错误视频URL配置
+    const ERROR_VIDEOS = {
+      DEFAULT: 'https://pay.xunkecloud.cn/image/Wrong.mp4',
+      OVERRUN: 'https://pay.xunkecloud.cn/image/Overrun.mp4',
+      NO_CHANNEL: 'https://pay.xunkecloud.cn/image/unusual.mp4',
+      INSUFFICIENT: 'https://pay.xunkecloud.cn/image/Insufficient.mp4',
+      INVALID_TOKEN: 'https://pay.xunkecloud.cn/image/tokenError.mp4'
+    };
+
+    // 创建错误响应的辅助函数
+    const createErrorResponse = (name: string, videoUrl: string) => ({
+      code: FieldCode.Success,
+      data: [{
+        name: `${name}.mp4`,
+        content: videoUrl,
+        contentType: 'attachment/url'
+      }]
+    });
+
     try {
-      
-          const createVideoUrl = `https://api.xunkecloud.cn/v1/images/generations`;
-            // 打印API调用参数信息
-            // 生成随机值并保存到变量中，供后面使用
-            const responseFormatValue = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-            
-            // 构建请求参数，动态添加quality参数
-            const requestBody: any = {
-                model: videoMethod.value,
-                "prompt": videoPrompt,
-                style: seconds.value,
-                size: size.value,
-                "response_format": responseFormatValue
-            };
-            
-            // 如果refImage存在且有第一个元素的tmp_url，则添加quality参数
-            if (refImage && refImage.length > 0 && refImage[0] && refImage[0].tmp_url) {
-                requestBody.quality = refImage[0].tmp_url;
-            }
-            
-            const requestOptions = {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody)
-            };
+      // 构建请求体
+      const requestBody: any = {
+        model: videoMethod.value,
+        prompt: videoPrompt,
+        seconds: seconds.value,
+        size: size.value
+      };
 
-            
-            
-            const taskResp = await context.fetch(createVideoUrl, requestOptions, 'auth_id_1');
-            
-      debugLog(
-        {'=1 视频创建接口结果':taskResp}
-      )
+      // 如果refImage存在且有第一个元素的tmp_url，则添加input_reference参数
+      if (refImage && Array.isArray(refImage) && refImage.length > 0 && refImage[0]?.tmp_url) {
+        requestBody.input_reference = [refImage[0].tmp_url];
+      }
 
-      // 检查API响应状态
-      if (!taskResp.ok) {
-        const errorData = await taskResp.json();
-        const errorText = JSON.stringify(errorData);
-        
-        // 如果是503状态码，发送到飞书回调地址
-        if (taskResp.status === 503) {
-          const feishuCallbackUrl = 'https://open.feishu.cn/anycross/trigger/callback/MGFmYWMwZWY0YWJjZWQyOTI5MTY0MzJjMDkyN2VmOWU3';
-          const errorPayload = {
-            ShortcutName: 'sora2',
-            ErrorMessage: `API调用失败: ${taskResp.status} - ${errorText}`
+      // 创建视频生成任务
+      const createTask = await context.fetch(API_BASE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      }, 'auth_id_1');
+
+      const taskResp = await createTask.json();
+      debugLog({ taskId: taskResp.id, message: '视频生成任务已创建' });
+
+      // 检查任务ID是否返回
+      if (taskResp?.id) {
+        // 轮询获取视频详情
+        const videoDetailUrl = `${API_BASE_URL}/${taskResp.id}`;
+        const detailRequestOptions = {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        };
+
+        const startTime = Date.now();
+        let videoDetailResp: any;
+        let isPollingComplete = false;
+
+          debugLog("开始轮询任务");
+        // 轮询逻辑
+        while (!isPollingComplete && (Date.now() - startTime) < MAX_POLLING_TIME) {
+          const getTaskDetail = await context.fetch(videoDetailUrl, detailRequestOptions, 'auth_id_1');
+          videoDetailResp = await getTaskDetail.json();
+          
+          // 检查状态
+          if (videoDetailResp?.status === 'failed') {
+            debugLog({ message: '视频生成失败', errorType: '官方错误，提示词/图片违规' });
+            return createErrorResponse('官方错误，提示词/图片违规', ERROR_VIDEOS.DEFAULT);
+          } else if (videoDetailResp?.status === 'completed') {
+            isPollingComplete = true;
+            debugLog({ message: '视频生成完成' });
+          } else {
+            // 未完成，等待后继续轮询
+            await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL));
+          }
+        }
+
+        // 检查是否超时
+        if (!isPollingComplete) {
+          debugLog({ message: '视频生成超时', errorType: '轮询超时' });
+          return {
+            code: FieldCode.Error,
+            data: createErrorResponse('捷径异常', ERROR_VIDEOS.OVERRUN).data
           };
-          
-          try {
-            await context.fetch(feishuCallbackUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify(errorPayload)
-            });
-            console.log('503错误信息已发送到飞书回调地址');
-          } catch (callbackError) {
-            console.log('发送503错误信息到飞书回调失败:', callbackError);
-          }
         }
-        
-        // 如果是超时错误（状态码408或其他超时相关错误），继续执行后面的内容
-        if (taskResp.status === 408 || errorText.includes('timeout') || errorText.includes('Timeout')) {
-          console.log('检测到超时错误，继续执行后续逻辑...');
-          // 继续执行后面的代码，不返回错误
-        } else {
-            throw new Error(errorData.error.message);
-        }
-      }
 
-       debugLog(
-        {'=2 任务ID':responseFormatValue}
-      )
-      
-      // 添加类型定义
-      interface TaskResponse {
-        task_id?: string;
-        taskId?: string;
-      }
-      
-      interface VideoResult {
-        video_url?: string;
-      }
-      
-    
-
-      // 将refImage转换为字符串
-      const refImageString = refImage && refImage.length > 0 ? refImage.map(item => item.tmp_url).join(',') : '';
-      const apiUrl = 'https://open.feishu.cn/anycross/trigger/callback/MDA0MTliNDExYmRmMTQzNGMyNDQwMTVhM2M4ZWNjZjY2';
-
-      
-      // 调用前等待60秒
-      console.log('首次调用前等待60秒...');
-      await new Promise(resolve => setTimeout(resolve, 60000));
-      
-      const maxTotalWaitTime = 900000; // 最多等待900秒（15分钟）
-      const retryDelay = 45000; // 每次重试等待45秒
-      let totalWaitTime = 60000; // 已经等待了60秒
-      
-      let checkUrl = async (attempt: number = 1): Promise<string> => {
-        console.log(`第${attempt}次查询任务状态...`);
-
-          // 构建请求参数，动态添加quality参数
-                const requestBody: any = {
-                  id: responseFormatValue,
-                  auth_id: 'auth_id_1',
-                  prompt: videoPrompt,
-                  image: refImageString,
-                  videoMethod: videoMethod.value
-                };
-            
-            
-            const taskRequestOptions = {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody)
-            };
-
-            const response = await context.fetch(apiUrl, taskRequestOptions, 'auth_id_1');
-        
-       
-        debugLog({'=2 视频结果查询结果': response});
-        const result = await response.json() as VideoResult;
-        
-        // 正确检查video_url是否存在且不为空
-        if (result.video_url && result.video_url !== "null" && result.video_url !== "") {
-          console.log('视频生成完成，URL:', result.video_url);
-          return result.video_url;
-        } else {
-          // 检查是否超过最大等待时间
-          if (totalWaitTime >= maxTotalWaitTime) {
-            console.log(`已等待${totalWaitTime/1000}秒，超过最大等待时间${maxTotalWaitTime/1000}秒，停止查询`);
-            throw new Error('视频生成超时');
-          }
-          
-          console.log(`视频尚未生成，${retryDelay/1000}秒后重试... (已等待: ${totalWaitTime/1000}秒)`);
-          await new Promise(resolve => setTimeout(resolve, retryDelay));
-          totalWaitTime += retryDelay;
-          return checkUrl(attempt + 1);
-        }
-      };
-      
-      const videoUrl = await checkUrl();
-      
-      let url = [
-      {
-        type: 'url',
-        text: videoPrompt,
-        link: videoUrl
-      }
-    ]
-      
-      
+        // 提取视频URL并返回成功响应
+        const videoUrl = videoDetailResp?.video_url || '';
         return {
-          code: FieldCode.Success, // 0 表示请求成功
-          // data 类型需与下方 resultType 定义一致
-          data: (url.map(({ link }, index) => {
-            console.log(link);
-            
-            if (!link || typeof link !== 'string') {
-              return undefined
-            }
-            const name = link.split('/').slice(-1)[0];
-            return {
-              name: videoPrompt+'.mp4',
-              content: link,
-              contentType: "attachment/url"
-            }
-          })).filter((v) => v)
+          code: FieldCode.Success,
+          data: [{
+            name: `${videoPrompt}.mp4`,
+            content: videoUrl,
+            contentType: 'attachment/url'
+          }]
         };
+      } else {
+        throw new Error(taskResp?.error?.message || '任务创建失败，未返回任务ID');
+      }
+    } catch (error: any) {
+      const errorMessage = String(error);
+      debugLog({ '异常错误': errorMessage });
 
-      // 请避免使用 debugLog(url) 这类方式输出日志，因为所查到的日志是没有顺序的，为方便排查错误，对每个log进行手动标记顺序
-      debugLog({
-        '===1 url为空': url
-      });
+      // 根据错误类型返回相应的错误视频
+      if (errorMessage.includes('无可用渠道')) {
+        debugLog({ message: '无可用渠道', errorType: '渠道错误', errorMessage });
+        return createErrorResponse('捷径异常', ERROR_VIDEOS.NO_CHANNEL);
+      } else if (errorMessage.includes('令牌额度已用尽')) {
+        debugLog({ message: '令牌额度已用尽', errorType: '余额不足', errorMessage });
+        return createErrorResponse('余额耗尽', ERROR_VIDEOS.INSUFFICIENT);
+      } else if (errorMessage.includes('无效的令牌')) {
+        debugLog({ message: '无效的令牌', errorType: '令牌错误', errorMessage });
+        return createErrorResponse('无效的令牌', ERROR_VIDEOS.INVALID_TOKEN);
+      }
+
+      // 未知错误
       return {
-        code: FieldCode.Error,
+        code: FieldCode.Error
       };
-   
-    } catch (e) {
-      debugLog({
-        '===9999 异常错误': String(e)
-      });
-
-      if (String(e).includes('无可用渠道')) {
-        
-        return {
-          code: FieldCode.Success, // 0 表示请求成功
-          // data 类型需与下方 resultType 定义一致
-          data:[{
-              name:  "捷径异常"+'.mp4',
-              content: "https://pay.xunkecloud.cn/image/unusual.mp4",
-              contentType: "attachment/url"
-            }] 
-        };
-      }
-
-      // 检查错误消息中是否包含余额耗尽的信息
-      if (String(e).includes('令牌额度已用尽')) {
-        console.log(123+"=========");
-        
-        return {
-          code: FieldCode.Success, // 0 表示请求成功
-          // data 类型需与下方 resultType 定义一致
-          data:[{
-              name:  "余额耗尽"+'.mp4',
-              content: "https://pay.xunkecloud.cn/image/Insufficient.mp4",
-              contentType: "attachment/url"
-            }] 
-        };
-      }
-       if (String(e).includes('无效的令牌')) {
-        console.log(456+"=========");
-        
-        return {
-        code: FieldCode.Success, // 0 表示请求成功
-        data: [
-          {
-            "name": "无效的令牌"+'.mp4', // 附件名称,需要带有文件格式后缀
-            "content": "https://pay.xunkecloud.cn/image/tokenError.mp4", // 可通过http.Get 请求直接下载的url.
-            "contentType": "attachment/url", // 固定值
-          }
-        ],
-        }
-      }
-      /** 返回非 Success 的错误码，将会在单元格上显示报错，请勿返回msg、message之类的字段，它们并不会起作用。
-       * 对于未知错误，请直接返回 FieldCode.Error，然后通过查日志来排查错误原因。
-       */
-      return {
-        code: FieldCode.Error,
-      }
     }
   }
 });
