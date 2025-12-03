@@ -106,7 +106,6 @@ basekit.addField({
           { label: '1280x720', value: '1280x720'},
           { label: '1024x1792', value: '1024x1792'},
           { label: '1792x1024', value: '1792x1024'},
-
         ]
       },
     },
