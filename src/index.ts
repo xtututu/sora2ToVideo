@@ -58,7 +58,8 @@ basekit.addField({
       props: {
         options: [
            { label: 'sora-2', value: 'sora-2'},
-          { label: 'sora-2-hd', value: 'sora-2-hd'}
+          { label: 'sora-2-hd', value: 'sora-2-hd'},
+          { label: 'sora-2-pro', value: 'sora-2-pro'}
         ]
       },
     },
@@ -85,13 +86,12 @@ basekit.addField({
       key: 'seconds',
       label: t('seconds'),
       component: FieldComponent.SingleSelect,
-      defaultValue: { label: t('12'), value: '12'},
+      defaultValue: { label: t('15'), value: '15'},
       props: {
         options: [
-          { label: '12', value: '12'},
-          { label: '8', value: '8'},
-           { label: '4', value: '4'},
-          
+          { label: '10', value: '10'},
+          { label: '15', value: '15'},
+          { label: '25', value: '25'},
         ]
       },
     },
