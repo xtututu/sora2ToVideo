@@ -15,6 +15,8 @@ basekit.addField({
         'refImage': '参考图片',
         'seconds': '视频时长',
         'size': '视频尺寸',
+        'modelBrand':'迅客'
+
       },
       'en-US': {
         'videoMethod': 'Model selection',
@@ -22,6 +24,8 @@ basekit.addField({
         'refImage': 'Reference image',
         'seconds': 'Video duration',
         'size': 'Video size',   
+        'modelBrand':'Xunke'
+
       },
       'ja-JP': {
         'videoMethod': 'モデル選択',
@@ -30,6 +34,8 @@ basekit.addField({
         'refImage': '参考画像',
         'seconds': 'ビデオ再生時間',
         'size': 'ビデオサイズ',   
+        'modelBrand':'Xunke'
+
       },
     }
   },
@@ -54,12 +60,12 @@ basekit.addField({
       key: 'videoMethod',
       label: t('videoMethod'),
       component: FieldComponent.SingleSelect,
-      defaultValue: { label: t('sora-2'), value: 'sora-2'},
+      defaultValue: { label: t('modelBrand') +'SR-2', value: 'sora-2'},
       props: {
         options: [
-          { label: '迅客 SR-2', value: 'sora-2'},
-          { label: '迅客 SR-2-hd', value: 'sora-2-hd'},
-          { label: '迅客 SR-2-pro', value: 'sora-2-pro'},
+          { label: t('modelBrand') +' SR-2', value: 'sora-2'},
+          { label: t('modelBrand') +' SR-2-hd', value: 'sora-2-hd'},
+          { label: t('modelBrand') +' SR-2-pro', value: 'sora-2-pro'},
         ]
       },
     },
