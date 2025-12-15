@@ -57,9 +57,9 @@ basekit.addField({
       defaultValue: { label: t('sora-2'), value: 'sora-2'},
       props: {
         options: [
-           { label: 'sora-2', value: 'sora-2'},
-          { label: 'sora-2-hd', value: 'sora-2-hd'},
-          { label: 'sora-2-pro', value: 'sora-2-pro'}
+          { label: '迅客 SR-2', value: 'sora-2'},
+          { label: '迅客 SR-2-hd', value: 'sora-2-hd'},
+          { label: '迅客 SR-2-pro', value: 'sora-2-pro'},
         ]
       },
     },
